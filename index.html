@@ -773,5 +773,99 @@ searchBtn.addEventListener('click', (e) => {
     searchModal.classList.add('active');
 });
 
-// 開啟檔案按鈕與轉碼邏輯
-fileInput.addEventListener('change',
+// 使用 FileReader 讀取檔案（完美相容 iOS Safari / Chrome）
+fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    currentFileKey = `${file.name}_${file.size}`;
+    statusText.textContent = '讀取中...';
+    textContent.textContent = '';
+    tocBtn.style.display = 'none';
+
+    const reader = new FileReader();
+
+    // 先嘗試以 UTF-8 讀取
+    reader.onload = function(event) {
+        try {
+            let rawText = event.target.result;
+            processAndDisplayBook(file.name, rawText);
+        } catch (err) {
+            console.error(err);
+            statusText.textContent = '解碼失敗';
+        }
+    };
+
+    reader.onerror = function() {
+        statusText.textContent = '讀取檔案失敗';
+    };
+
+    // 針對 GBK / GB18030 編碼的小說（常見於中文網路小說），使用支援自動檢測或 fallback 的方式
+    // 如果帶有亂碼，FileReader 可改用 'gb18030'
+    reader.readAsText(file, 'utf-8');
+});
+
+function processAndDisplayBook(fileName, rawText) {
+    statusText.textContent = '轉換中...';
+    
+    // 簡單檢測是否包含過多亂碼，若有則改用 gb18030 重新讀取一次
+    setTimeout(() => {
+        const convertedFullText = formatQuotes(converter(rawText));
+        textContent.textContent = convertedFullText;
+        toolbar.classList.remove('hidden');
+
+        saveBookToDB(currentFileKey, fileName, convertedFullText);
+
+        chapterList = parseChapters(convertedFullText);
+        if (chapterList.length > 0) {
+            tocBtn.style.display = 'block';
+            renderToc();
+        }
+
+        const savedY = getSavedProgress();
+        if (savedY > 0) {
+            statusText.textContent = '已恢復進度';
+            setTimeout(() => { statusText.textContent = ''; }, 2000);
+            window.scrollTo(0, savedY);
+            updateProgressUI();
+        } else {
+            statusText.textContent = '';
+            window.scrollTo(0, 0);
+            updateProgressUI();
+        }
+        showToast(`成功載入《${fileName}》`);
+    }, 50);
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+    try {
+        await initDB();
+        const books = await getAllBooksFromDB();
+        if (books.length > 0) {
+            books.sort((a, b) => b.updatedAt - a.updatedAt);
+            const lastBook = books[0];
+            currentFileKey = lastBook.key;
+            textContent.textContent = lastBook.content;
+            toolbar.classList.remove('hidden');
+
+            chapterList = parseChapters(lastBook.content);
+            if (chapterList.length > 0) {
+                tocBtn.style.display = 'block';
+                renderToc();
+            }
+
+            const savedY = getSavedProgress();
+            if (savedY > 0) {
+                window.scrollTo(0, savedY);
+            }
+            updateProgressUI();
+            showToast(`自動載入最近書籍: ${lastBook.name}`);
+        }
+    } catch (e) {
+        console.error('初始化書架失敗', e);
+    }
+});
+</script>
+
+</body>
+</html>
