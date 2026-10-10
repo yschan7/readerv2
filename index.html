@@ -4,24 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<!-- 改為不透明純黑狀態列 -->
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 
-<!-- 強制瀏覽器與 iOS Web App 抓取最新版本，不使用舊快取 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 
 <title>Simple readerv2</title>
 
-<!-- 高精準度 OpenCC 繁簡轉換庫 -->
 <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/cn2t.js"></script>
 
 <style>
 :root {
---bg-color: #000000; /* 專注純黑 */
+--bg-color: #000000;
 --text-color: #e0e0e0;
---panel-bg: #000000; /* 工具列純黑不透明 */
+--panel-bg: #000000;
 --border-color: #222222;
 --font-size: 26px;
 --line-height: 1.4;
@@ -48,7 +45,7 @@ overflow-y: auto;
 -webkit-overflow-scrolling: touch;
 }
 
-/* 頂部工具列 */
+/* 雙行頂部工具列 */
 .toolbar {
 position: fixed;
 top: 0;
@@ -58,30 +55,37 @@ z-index: 100;
 background-color: var(--panel-bg);
 border-bottom: 1px solid var(--border-color);
 display: flex;
-flex-wrap: nowrap;
-gap: 8px;
-align-items: center;
-padding: calc(env(safe-area-inset-top) + 8px) 12px 8px 12px;
-overflow-x: auto;
-white-space: nowrap;
+flex-direction: column;
+gap: 6px;
+padding: calc(env(safe-area-inset-top) + 8px) 10px 8px 10px;
 transition: transform 0.2s ease;
-}
-
-.toolbar::-webkit-scrollbar {
-display: none;
 }
 
 .toolbar.hidden {
 transform: translateY(-100%);
 }
 
+.toolbar-row {
+display: flex;
+flex-wrap: nowrap;
+gap: 6px;
+align-items: center;
+overflow-x: auto;
+white-space: nowrap;
+width: 100%;
+}
+
+.toolbar-row::-webkit-scrollbar {
+display: none;
+}
+
 .btn {
 background-color: #1a1a1a;
 color: var(--text-color);
 border: 1px solid var(--border-color);
-padding: 5px 10px;
+padding: 5px 9px;
 border-radius: 6px;
-font-size: 13px;
+font-size: 12px;
 cursor: pointer;
 user-select: none;
 flex-shrink: 0;
@@ -97,6 +101,8 @@ color: #4CAF50;
 border: 1px solid #4CAF50;
 font-weight: bold;
 flex-shrink: 0;
+font-size: 12px;
+padding: 5px 8px;
 }
 
 /* 進度滑桿容器 */
@@ -134,7 +140,8 @@ display: none;
 /* 文章內容區塊 */
 .content-container {
 width: 100%;
-padding: calc(env(safe-area-inset-top) + 60px) 0px calc(env(safe-area-inset-bottom) + 60px) 0px;
+/* 雙行工具列高度約 80-90px，動態調整上邊距 */
+padding: calc(env(safe-area-inset-top) + 95px) 0px calc(env(safe-area-inset-bottom) + 60px) 0px;
 font-size: var(--font-size);
 line-height: var(--line-height);
 word-break: break-word;
@@ -143,23 +150,23 @@ transform: translateZ(0);
 }
 
 .loading-status {
-font-size: 12px;
+font-size: 11px;
 color: #aaa;
 flex-shrink: 0;
 }
 
-/* 目錄選單彈窗樣式 */
+/* 左側半屏抽屜式目錄 */
 .toc-modal {
 position: fixed;
 top: 0;
 left: 0;
 width: 100%;
 height: 100%;
-background-color: rgba(0, 0, 0, 0.8);
+background-color: rgba(0, 0, 0, 0.6);
 z-index: 200;
 display: flex;
-justify-content: center;
-align-items: flex-end;
+justify-content: flex-start;
+align-items: stretch;
 opacity: 0;
 visibility: hidden;
 transition: opacity 0.2s ease, visibility 0.2s ease;
@@ -172,44 +179,30 @@ visibility: visible;
 
 .toc-content {
 background-color: #111;
-width: 100%;
-max-height: 70vh;
-border-top-left-radius: 16px;
-border-top-right-radius: 16px;
-border-top: 1px solid #333;
+width: 50%; /* 只佔左邊一半空間 */
+height: 100%;
+border-right: 1px solid #333;
 display: flex;
 flex-direction: column;
-overflow: hidden;
+box-shadow: 4px 0 15px rgba(0,0,0,0.5);
+transform: translateX(-100%);
+transition: transform 0.25s ease;
 }
 
-.toc-header {
-padding: 14px 16px;
-border-bottom: 1px solid #222;
-display: flex;
-justify-content: space-between;
-align-items: center;
-font-weight: bold;
-font-size: 16px;
-color: #fff;
-}
-
-.toc-close {
-background: none;
-border: none;
-color: #888;
-font-size: 20px;
-cursor: pointer;
+.toc-modal.active .toc-content {
+transform: translateX(0);
 }
 
 .toc-list {
+flex: 1;
 overflow-y: auto;
-padding: 8px 0;
+padding: calc(env(safe-area-inset-top) + 10px) 0 20px 0;
 -webkit-overflow-scrolling: touch;
 }
 
 .toc-item {
-padding: 12px 20px;
-font-size: 15px;
+padding: 14px 16px;
+font-size: 14px;
 color: #ccc;
 border-bottom: 1px solid #1a1a1a;
 cursor: pointer;
@@ -227,49 +220,59 @@ color: #fff;
 padding: 30px;
 text-align: center;
 color: #666;
-font-size: 14px;
+font-size: 13px;
 }
 </style>
 </head>
 <body>
 
 <div class="toolbar" id="toolbar">
-<label class="btn" for="fileInput">📁 開啟檔案</label>
-<input type="file" id="fileInput" accept=".txt,.html,.md,.text">
+    <!-- 第一行功能列 -->
+    <div class="toolbar-row">
+        <label class="btn" for="fileInput">📁 開啟檔案</label>
+        <input type="file" id="fileInput" accept=".txt,.html,.md,.text">
 
-<button class="btn" id="tocBtn" style="display:none;">📑 目錄</button>
+        <button class="btn" id="tocBtn" style="display:none;">📑 目錄</button>
+        <button class="btn" id="fontIncBtn">字體+</button>
+        <button class="btn" id="fontDecBtn">字體-</button>
+        <button class="btn" id="lineIncBtn">行距+</button>
+        <button class="btn" id="lineDecBtn">行距-</button>
+        <button class="btn" id="searchBtn">🔍 搜尋</button>
+    </div>
 
-<button class="btn progress-btn" id="progressBtn">0.00%</button>
-
-<div class="progress-slider-container">
-<input type="range" class="progress-slider" id="progressSlider" min="0" max="100" step="0.1" value="0">
-</div>
-
-<span class="loading-status" id="statusText"></span>
+    <!-- 第二行進度列 -->
+    <div class="toolbar-row">
+        <button class="btn progress-btn" id="progressBtn">0.00%</button>
+        <div class="progress-slider-container">
+            <input type="range" class="progress-slider" id="progressSlider" min="0" max="100" step="0.1" value="0">
+        </div>
+        <span class="loading-status" id="statusText"></span>
+    </div>
 </div>
 
 <div class="content-container" id="textContent">
 請點擊上方「開啟檔案」載入文章...
 </div>
 
-<!-- 目錄彈窗 -->
+<!-- 左側半屏目錄抽屜 -->
 <div class="toc-modal" id="tocModal">
-<div class="toc-content">
-<div class="toc-header">
-<span>文章目錄</span>
-<button class="toc-close" id="tocClose">&times;</button>
-</div>
-<div class="toc-list" id="tocList">
-<!-- 動態載入目錄 -->
-</div>
-</div>
+    <div class="toc-content">
+        <div class="toc-list" id="tocList">
+            <!-- 動態載入目錄 -->
+        </div>
+    </div>
 </div>
 
 <script>
-// 初始化 OpenCC 繁簡轉換
+// 初始化設定與讀取儲存偏好
+let currentFontSize = parseFloat(localStorage.getItem('reader_font_size')) || 26;
+let currentLineHeight = parseFloat(localStorage.getItem('reader_line_height')) || 1.4;
+
+document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
+document.documentElement.style.setProperty('--line-height', currentLineHeight);
+
 const converter = window.OpenCC ? window.OpenCC.Converter({ from: 'cn', to: 'hk' }) : text => text;
 
-// 將各類引號轉為標準繁體中文標點「」與『』
 function formatQuotes(text) {
 return text
 .replace(/“/g, '「')
@@ -288,12 +291,17 @@ const progressSlider = document.getElementById('progressSlider');
 const statusText = document.getElementById('statusText');
 const tocBtn = document.getElementById('tocBtn');
 const tocModal = document.getElementById('tocModal');
-const tocClose = document.getElementById('tocClose');
 const tocList = document.getElementById('tocList');
+
+const fontIncBtn = document.getElementById('fontIncBtn');
+const fontDecBtn = document.getElementById('fontDecBtn');
+const lineIncBtn = document.getElementById('lineIncBtn');
+const lineDecBtn = document.getElementById('lineDecBtn');
+const searchBtn = document.getElementById('searchBtn');
 
 let isUserDraggingSlider = false;
 let currentFileKey = null; 
-let chapterList = []; // 儲存解析到的目錄資訊
+let chapterList = []; 
 
 // 1. 點擊空白處隱藏/顯示選單
 document.addEventListener('click', (e) => {
@@ -316,14 +324,10 @@ if (!currentFileKey) return 0;
 return parseFloat(localStorage.getItem(`reader_pos_${currentFileKey}`)) || 0;
 }
 
-// 3. 頁面滾動時更新 UI 與儲存進度
+// 3. 滾動進度更新
 function updateProgressUI() {
 const scrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
-
-if (currentFileKey) {
-saveProgress(scrollTop);
-}
-
+if (currentFileKey) saveProgress(scrollTop);
 if (isUserDraggingSlider) return;
 
 const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
@@ -344,50 +348,91 @@ if (scrollTimer) cancelAnimationFrame(scrollTimer);
 scrollTimer = requestAnimationFrame(updateProgressUI);
 }, { passive: true });
 
-// 4. 滑桿拖動控制
+// 4. 滑桿拖動
 progressSlider.addEventListener('mousedown', () => isUserDraggingSlider = true);
 progressSlider.addEventListener('touchstart', () => isUserDraggingSlider = true, { passive: true });
 
 progressSlider.addEventListener('input', (e) => {
 const targetPercent = parseFloat(e.target.value);
 progressBtn.textContent = `${targetPercent.toFixed(2)}%`;
-
 const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-const targetY = (targetPercent / 100) * scrollHeight;
-
-window.scrollTo(0, targetY);
+window.scrollTo(0, (targetPercent / 100) * scrollHeight);
 });
 
 progressSlider.addEventListener('mouseup', () => isUserDraggingSlider = false);
 progressSlider.addEventListener('touchend', () => isUserDraggingSlider = false);
 
-// 5. 點擊數字按鈕輸入精準進度
+// 5. 百分比跳轉
 progressBtn.addEventListener('click', (e) => {
 e.stopPropagation();
 const currentVal = parseFloat(progressBtn.textContent) || 0;
 const input = prompt('請輸入跳轉進度 (0 - 100):', currentVal.toFixed(2));
-
 if (input !== null) {
 const targetPercent = parseFloat(input);
 if (!isNaN(targetPercent)) {
 const clamped = Math.min(100, Math.max(0, targetPercent));
 const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-const targetY = (clamped / 100) * scrollHeight;
-
-window.scrollTo(0, targetY);
+window.scrollTo(0, (clamped / 100) * scrollHeight);
 updateProgressUI();
 }
 }
 });
 
-// 目錄彈窗控制
+// 字體與行距調整按鈕
+fontIncBtn.addEventListener('click', (e) => {
+e.stopPropagation();
+currentFontSize = Math.min(50, currentFontSize + 2);
+document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
+localStorage.setItem('reader_font_size', currentFontSize);
+updateProgressUI();
+});
+
+fontDecBtn.addEventListener('click', (e) => {
+e.stopPropagation();
+currentFontSize = Math.max(14, currentFontSize - 2);
+document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
+localStorage.setItem('reader_font_size', currentFontSize);
+updateProgressUI();
+});
+
+lineIncBtn.addEventListener('click', (e) => {
+e.stopPropagation();
+currentLineHeight = Math.min(2.5, parseFloat((currentLineHeight + 0.1).toFixed(1)));
+document.documentElement.style.setProperty('--line-height', currentLineHeight);
+localStorage.setItem('reader_line_height', currentLineHeight);
+updateProgressUI();
+});
+
+lineDecBtn.addEventListener('click', (e) => {
+e.stopPropagation();
+currentLineHeight = Math.max(1.0, parseFloat((currentLineHeight - 0.1).toFixed(1)));
+document.documentElement.style.setProperty('--line-height', currentLineHeight);
+localStorage.setItem('reader_line_height', currentLineHeight);
+updateProgressUI();
+});
+
+// 簡單文字搜尋功能
+searchBtn.addEventListener('click', (e) => {
+e.stopPropagation();
+const keyword = prompt('請輸入要搜尋的關鍵字：');
+if (!keyword) return;
+const fullText = textContent.textContent;
+const index = fullText.indexOf(keyword);
+if (index === -1) {
+alert('找不到該關鍵字');
+return;
+}
+const totalLen = fullText.length || 1;
+const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+const ratio = Math.min(1, Math.max(0, index / totalLen));
+window.scrollTo(0, ratio * scrollHeight);
+updateProgressUI();
+});
+
+// 目錄開關控制
 tocBtn.addEventListener('click', (e) => {
 e.stopPropagation();
 tocModal.classList.add('active');
-});
-
-tocClose.addEventListener('click', () => {
-tocModal.classList.remove('active');
 });
 
 tocModal.addEventListener('click', (e) => {
@@ -396,31 +441,28 @@ tocModal.classList.remove('active');
 }
 });
 
-// 自動辨識章節標題的正則表達式
-// 支援：第一章、第1章、第一節、第1節、章節、以及常見的數字標題列
+// 強效章節偵測（支援 第X章、第X節、第一百五十六節 等中文數字與阿拉伯數字）
 function parseChapters(fullText) {
 const lines = fullText.split(/\r?\n/);
 const chapters = [];
 let charCount = 0;
 
-// 比對模式：匹配「第X章/節」或「章節」等開頭，且長度適中不超過 30 字的行
-const chapterRegex = /^\s*(?:第[0-9零一二三四五六七八九十百千]+[章節回幕卷]|chapter\s*\d+|[0-9一二三四五六七八九十]+[、\.])/i;
+// 支援「第 + 數字（阿拉伯或中文大寫） + 章/節/回/幕/卷」或常見標題
+const chapterRegex = /^\s*(?:第[0-9零一二三四五六七八九十百千萬億]+[章節回幕卷]|chapter\s*\d+|[0-9一二三四五六七八九十百]+[、\.])/i;
 
 for (let i = 0; i < lines.length; i++) {
 const line = lines[i].trim();
-// 條件：符合章節格式，且整行字數小於 40 字（避免內文剛好包含關鍵字而被誤判）
 if (line.length > 0 && line.length < 40 && chapterRegex.test(line)) {
 chapters.push({
 title: line,
 charIndex: charCount
 });
 }
-charCount += lines[i].length + 1; // +1 為換行符號
+charCount += lines[i].length + 1;
 }
 return chapters;
 }
 
-// 渲染目錄列表
 function renderToc() {
 tocList.innerHTML = '';
 if (chapterList.length === 0) {
@@ -430,13 +472,12 @@ return;
 
 const totalLen = textContent.textContent.length || 1;
 
-chapterList.forEach((ch, idx) => {
+chapterList.forEach((ch) => {
 const item = document.createElement('div');
 item.className = 'toc-item';
 item.textContent = ch.title;
 item.addEventListener('click', () => {
 tocModal.classList.remove('active');
-// 估算跳轉高度
 const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
 const ratio = Math.min(1, Math.max(0, ch.charIndex / totalLen));
 window.scrollTo(0, ratio * scrollHeight);
@@ -446,13 +487,12 @@ tocList.appendChild(item);
 });
 }
 
-// 6. 檔案載入、轉碼、引號處理與自動恢復進度
+// 檔案載入與轉碼
 fileInput.addEventListener('change', async (e) => {
 const file = e.target.files[0];
 if (!file) return;
 
 currentFileKey = `${file.name}_${file.size}`;
-
 statusText.textContent = '載入中...';
 textContent.innerHTML = '';
 tocBtn.style.display = 'none';
@@ -492,19 +532,16 @@ await new Promise(r => setTimeout(r, 0));
 textContent.appendChild(fragment);
 toolbar.classList.remove('hidden');
 
-// 解析目錄並顯示目錄按鈕
 chapterList = parseChapters(fullRawText);
 if (chapterList.length > 0) {
 tocBtn.style.display = 'block';
 renderToc();
 }
 
-// 讀取上次儲存的進度並恢復
 const savedY = getSavedProgress();
 if (savedY > 0) {
 statusText.textContent = '已恢復閱讀進度';
 setTimeout(() => { statusText.textContent = ''; }, 2000);
-
 requestAnimationFrame(() => {
 window.scrollTo(0, savedY);
 updateProgressUI();
