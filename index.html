@@ -128,7 +128,8 @@ cursor: pointer;
 }
 
 input[type="file"] {
-display: none;
+display: none;setTimeout
+
 }
 
 /* 文章內容區塊 */
@@ -422,7 +423,7 @@ function showToast(msg) {
     toastNotice.textContent = msg;
     toastNotice.classList.add('show');
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toastNotice.classList.remove('show'); }, 1500);
+    toastTimer = setTimeout(() => { toastNotice.classList.remove('show'); }, 2500);
 }
 
 document.addEventListener('click', (e) => {
