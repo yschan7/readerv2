@@ -140,7 +140,7 @@ display: none;
 /* 文章內容區塊 */
 .content-container {
 width: 100%;
-padding: calc(env(safe-area-inset-top) + 95px) 0px calc(env(safe-area-inset-bottom) + 60px) 0px;
+padding: calc(env(safe-area-inset-top) + 95px) 12px calc(env(safe-area-inset-bottom) + 60px) 12px;
 font-size: var(--font-size);
 line-height: var(--line-height);
 word-break: break-word;
@@ -460,7 +460,7 @@ const searchList = document.getElementById('searchList');
 
 let isUserDraggingSlider = false;
 let currentFileKey = null; 
-let chapterElements = []; 
+let chapterList = []; 
 let toastTimer = null;
 
 function showToast(msg) {
@@ -497,4 +497,281 @@ function updateProgressUI() {
         return;
     }
 
-    const percent = Math.min(100, Math.max(0, (scrollTop / scrollHeight)
+    const percent = Math.min(100, Math.max(0, (scrollTop / scrollHeight) * 100));
+    progressBtn.textContent = `${percent.toFixed(2)}%`;
+    progressSlider.value = percent;
+}
+
+let scrollTimer;
+window.addEventListener('scroll', () => {
+    if (scrollTimer) cancelAnimationFrame(scrollTimer);
+    scrollTimer = requestAnimationFrame(updateProgressUI);
+}, { passive: true });
+
+progressSlider.addEventListener('mousedown', () => isUserDraggingSlider = true);
+progressSlider.addEventListener('touchstart', () => isUserDraggingSlider = true, { passive: true });
+
+progressSlider.addEventListener('input', (e) => {
+    const targetPercent = parseFloat(e.target.value);
+    progressBtn.textContent = `${targetPercent.toFixed(2)}%`;
+    const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+    window.scrollTo(0, (targetPercent / 100) * scrollHeight);
+});
+
+progressSlider.addEventListener('mouseup', () => isUserDraggingSlider = false);
+progressSlider.addEventListener('touchend', () => isUserDraggingSlider = false);
+
+progressBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const currentVal = parseFloat(progressBtn.textContent) || 0;
+    const input = prompt('請輸入跳轉進度 (0 - 100):', currentVal.toFixed(2));
+    if (input !== null) {
+        const targetPercent = parseFloat(input);
+        if (!isNaN(targetPercent)) {
+            const clamped = Math.min(100, Math.max(0, targetPercent));
+            const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+            window.scrollTo(0, (clamped / 100) * scrollHeight);
+            updateProgressUI();
+        }
+    }
+});
+
+// 字體/行距調整（帶錨點鎖定與 Toast 通知）
+function adjustStyles(type, delta) {
+    let anchorNode = null;
+    let anchorOffset = 0;
+    const range = document.caretRangeFromPoint ? document.caretRangeFromPoint(10, 100) : null;
+    if (range) {
+        anchorNode = range.startContainer;
+        anchorOffset = range.startOffset;
+    }
+
+    if (type === 'font') {
+        currentFontSize = Math.max(14, Math.min(50, currentFontSize + delta));
+        document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
+        localStorage.setItem('reader_font_size', currentFontSize);
+        showToast(`字體大小: ${currentFontSize}px`);
+    } else if (type === 'line') {
+        currentLineHeight = Math.max(1.0, Math.min(2.5, parseFloat((currentLineHeight + delta).toFixed(1))));
+        document.documentElement.style.setProperty('--line-height', currentLineHeight);
+        localStorage.setItem('reader_line_height', currentLineHeight);
+        showToast(`行距大小: ${currentLineHeight}`);
+    }
+
+    requestAnimationFrame(() => {
+        if (anchorNode && anchorNode.nodeType === Node.TEXT_NODE) {
+            try {
+                const rectRange = document.createRange();
+                rectRange.setStart(anchorNode, Math.min(anchorOffset, anchorNode.length));
+                rectRange.setEnd(anchorNode, Math.min(anchorOffset, anchorNode.length));
+                const rect = rectRange.getBoundingClientRect();
+                window.scrollBy(0, rect.top - 100);
+            } catch (e) {}
+        }
+        updateProgressUI();
+    });
+}
+
+document.getElementById('fontIncBtn').addEventListener('click', (e) => { e.stopPropagation(); adjustStyles('font', 2); });
+document.getElementById('fontDecBtn').addEventListener('click', (e) => { e.stopPropagation(); adjustStyles('font', -2); });
+document.getElementById('lineIncBtn').addEventListener('click', (e) => { e.stopPropagation(); adjustStyles('line', 0.1); });
+document.getElementById('lineDecBtn').addEventListener('click', (e) => { e.stopPropagation(); adjustStyles('line', -0.1); });
+
+function setupDrawer(modalId, btnId, closeId) {
+    const modal = document.getElementById(modalId);
+    document.getElementById(btnId).addEventListener('click', (e) => {
+        e.stopPropagation();
+        modal.classList.add('active');
+        if (modalId === 'shelfModal') renderShelf();
+    });
+    document.getElementById(closeId).addEventListener('click', () => modal.classList.remove('active'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
+}
+
+setupDrawer('tocModal', 'tocBtn', 'tocClose');
+setupDrawer('shelfModal', 'shelfBtn', 'shelfClose');
+setupDrawer('searchModal', 'searchBtn', 'searchClose');
+
+// 智慧章節解析（支援第一百五十六節等）
+function parseChapters(fullText) {
+    const lines = fullText.split(/\r?\n/);
+    const chapters = [];
+    let charCount = 0;
+    const totalLen = fullText.length || 1;
+    const chapterRegex = /^\s*(?:第[0-9零一二三四五六七八九十百千萬億]+[章節回幕卷]|chapter\s*\d+|[0-9一二三四五六七八九十百]+[、\.])/i;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.length > 0 && line.length < 50 && chapterRegex.test(line)) {
+            const percent = ((charCount / totalLen) * 100).toFixed(2);
+            chapters.push({
+                title: line,
+                charIndex: charCount,
+                percent: percent
+            });
+        }
+        charCount += lines[i].length + 1;
+    }
+    return chapters;
+}
+
+function renderToc() {
+    tocList.innerHTML = '';
+    if (chapterList.length === 0) {
+        tocList.innerHTML = '<div class="drawer-empty">未偵測到明確的章節目錄</div>';
+        tocBtn.style.display = 'none';
+        return;
+    }
+    
+    tocBtn.style.display = 'block';
+    const totalLen = textContent.textContent.length || 1;
+    const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+
+    chapterList.forEach((ch) => {
+        const item = document.createElement('div');
+        item.className = 'drawer-item';
+        
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = ch.title;
+        titleSpan.style.overflow = 'hidden';
+        titleSpan.style.textOverflow = 'ellipsis';
+        titleSpan.style.flex = '1';
+
+        const percentSpan = document.createElement('span');
+        percentSpan.className = 'item-subtext';
+        percentSpan.textContent = `${ch.percent}%`;
+
+        item.appendChild(titleSpan);
+        item.appendChild(percentSpan);
+
+        item.addEventListener('click', () => {
+            tocModal.classList.remove('active');
+            const ratio = Math.min(1, Math.max(0, ch.charIndex / totalLen));
+            window.scrollTo(0, ratio * scrollHeight);
+            updateProgressUI();
+        });
+        tocList.appendChild(item);
+    });
+}
+
+async function renderShelf() {
+    shelfList.innerHTML = '';
+    const books = await getAllBooksFromDB();
+    if (books.length === 0) {
+        shelfList.innerHTML = '<div class="drawer-empty">書架目前沒有儲存的書籍</div>';
+        return;
+    }
+
+    books.sort((a, b) => b.updatedAt - a.updatedAt);
+    books.forEach((book) => {
+        const item = document.createElement('div');
+        item.className = 'drawer-item';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = book.name;
+        titleSpan.style.overflow = 'hidden';
+        titleSpan.style.textOverflow = 'ellipsis';
+        titleSpan.style.flex = '1';
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'delete-btn';
+        delBtn.textContent = '刪除';
+        delBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (confirm(`確定要從書架刪除《${book.name}》嗎？`)) {
+                await deleteBookFromDB(book.key);
+                renderShelf();
+            }
+        });
+
+        item.appendChild(titleSpan);
+        item.appendChild(delBtn);
+
+        item.addEventListener('click', () => {
+            shelfModal.classList.remove('active');
+            currentFileKey = book.key;
+            statusText.textContent = '載入中...';
+            textContent.textContent = book.content;
+
+            chapterList = parseChapters(book.content);
+            if (chapterList.length > 0) {
+                tocBtn.style.display = 'block';
+                renderToc();
+            } else {
+                tocBtn.style.display = 'none';
+            }
+
+            const savedY = getSavedProgress();
+            window.scrollTo(0, savedY);
+            updateProgressUI();
+            statusText.textContent = '';
+            showToast(`已載入《${book.name}》`);
+        });
+
+        shelfList.appendChild(item);
+    });
+}
+
+// 穩健的搜尋功能
+searchBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const keyword = prompt('請輸入要搜尋的關鍵字：');
+    if (!keyword) return;
+
+    const fullText = textContent.textContent;
+    if (!fullText || fullText.startsWith('請點擊')) {
+        alert('請先載入文章內容再進行搜尋');
+        return;
+    }
+
+    searchList.innerHTML = '';
+    let matchCount = 0;
+    let pos = 0;
+    const totalLen = fullText.length || 1;
+    const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+
+    while ((pos = fullText.indexOf(keyword, pos)) !== -1) {
+        matchCount++;
+        const start = Math.max(0, pos - 15);
+        const end = Math.min(fullText.length, pos + keyword.length + 15);
+        const snippet = fullText.substring(start, end).replace(/\n/g, ' ');
+        const percent = ((pos / totalLen) * 100).toFixed(2);
+
+        const item = document.createElement('div');
+        item.className = 'drawer-item search-result-item';
+
+        const snippetDiv = document.createElement('div');
+        snippetDiv.className = 'search-snippet';
+        snippetDiv.innerHTML = `...${snippet.replace(keyword, `<span>${keyword}</span>`)}...`;
+
+        const footerRow = document.createElement('div');
+        footerRow.className = 'search-footer-row';
+        footerRow.innerHTML = `<span class="item-subtext">${percent}%</span>`;
+
+        item.appendChild(snippetDiv);
+        item.appendChild(footerRow);
+
+        const targetIndex = pos;
+        item.addEventListener('click', () => {
+            searchModal.classList.remove('active');
+            const ratio = Math.min(1, Math.max(0, targetIndex / totalLen));
+            window.scrollTo(0, ratio * scrollHeight);
+            updateProgressUI();
+            showToast(`已跳轉至 ${percent}%`);
+        });
+
+        searchList.appendChild(item);
+        pos += keyword.length;
+        if (matchCount >= 100) break;
+    }
+
+    if (matchCount === 0) {
+        alert('找不到符合的關鍵字');
+        return;
+    }
+
+    searchModal.classList.add('active');
+});
+
+// 開啟檔案按鈕與轉碼邏輯
+fileInput.addEventListener('change',
