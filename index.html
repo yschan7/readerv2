@@ -140,7 +140,6 @@ display: none;
 /* 文章內容區塊 */
 .content-container {
 width: 100%;
-/* 雙行工具列高度約 80-90px，動態調整上邊距 */
 padding: calc(env(safe-area-inset-top) + 95px) 0px calc(env(safe-area-inset-bottom) + 60px) 0px;
 font-size: var(--font-size);
 line-height: var(--line-height);
@@ -155,8 +154,28 @@ color: #aaa;
 flex-shrink: 0;
 }
 
-/* 左側半屏抽屜式目錄 */
-.toc-modal {
+/* 浮動通知提示框 */
+.toast-notice {
+position: fixed;
+top: calc(env(safe-area-inset-top) + 100px);
+right: 20px;
+background-color: rgba(30, 30, 30, 0.95);
+color: #fff;
+padding: 8px 14px;
+border-radius: 8px;
+font-size: 13px;
+z-index: 300;
+border: 1px solid #444;
+pointer-events: none;
+opacity: 0;
+transition: opacity 0.2s ease;
+}
+.toast-notice.show {
+opacity: 1;
+}
+
+/* 通用側邊欄抽屜 (目錄與書架共用) */
+.drawer-modal {
 position: fixed;
 top: 0;
 left: 0;
@@ -172,14 +191,14 @@ visibility: hidden;
 transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
-.toc-modal.active {
+.drawer-modal.active {
 opacity: 1;
 visibility: visible;
 }
 
-.toc-content {
+.drawer-content {
 background-color: #111;
-width: 50%; /* 只佔左邊一半空間 */
+width: 50%; /* 佔左邊一半空間 */
 height: 100%;
 border-right: 1px solid #333;
 display: flex;
@@ -189,38 +208,101 @@ transform: translateX(-100%);
 transition: transform 0.25s ease;
 }
 
-.toc-modal.active .toc-content {
+.drawer-modal.active .drawer-content {
 transform: translateX(0);
 }
 
-.toc-list {
+.drawer-header {
+padding: 14px 16px;
+border-bottom: 1px solid #222;
+display: flex;
+justify-content: space-between;
+align-items: center;
+font-weight: bold;
+font-size: 15px;
+color: #fff;
+background-color: #151515;
+}
+
+.drawer-close {
+background: none;
+border: none;
+color: #aaa;
+font-size: 18px;
+cursor: pointer;
+}
+
+.drawer-list {
 flex: 1;
 overflow-y: auto;
-padding: calc(env(safe-area-inset-top) + 10px) 0 20px 0;
+padding: 4px 0;
 -webkit-overflow-scrolling: touch;
 }
 
-.toc-item {
-padding: 14px 16px;
-font-size: 14px;
+.drawer-item {
+padding: 12px 16px;
+font-size: 13px;
 color: #ccc;
 border-bottom: 1px solid #1a1a1a;
 cursor: pointer;
 white-space: nowrap;
 overflow: hidden;
 text-overflow: ellipsis;
+display: flex;
+justify-content: space-between;
+align-items: center;
 }
 
-.toc-item:active {
+.drawer-item:active {
 background-color: #222;
 color: #fff;
 }
 
-.toc-empty {
+.drawer-empty {
 padding: 30px;
 text-align: center;
 color: #666;
 font-size: 13px;
+}
+
+.item-subtext {
+font-size: 11px;
+color: #777;
+margin-left: 8px;
+flex-shrink: 0;
+}
+
+.delete-btn {
+background: #331111;
+color: #ff6666;
+border: 1px solid #552222;
+padding: 2px 6px;
+border-radius: 4px;
+font-size: 11px;
+cursor: pointer;
+margin-left: 8px;
+flex-shrink: 0;
+}
+.delete-btn:active {
+background: #551111;
+}
+
+/* 搜尋結果彈窗樣式調整 */
+.search-result-item {
+white-space: normal !important;
+display: flex;
+flex-direction: column;
+gap: 4px;
+padding: 10px 16px !important;
+}
+.search-snippet {
+font-size: 12px;
+color: #999;
+line-height: 1.3;
+}
+.search-snippet span {
+color: #4CAF50;
+font-weight: bold;
 }
 </style>
 </head>
@@ -232,6 +314,7 @@ font-size: 13px;
         <label class="btn" for="fileInput">📁 開啟檔案</label>
         <input type="file" id="fileInput" accept=".txt,.html,.md,.text">
 
+        <button class="btn" id="shelfBtn">📚 書架</button>
         <button class="btn" id="tocBtn" style="display:none;">📑 目錄</button>
         <button class="btn" id="fontIncBtn">字體+</button>
         <button class="btn" id="fontDecBtn">字體-</button>
@@ -251,20 +334,108 @@ font-size: 13px;
 </div>
 
 <div class="content-container" id="textContent">
-請點擊上方「開啟檔案」載入文章...
+請點擊上方「開啟檔案」或從「書架」載入文章...
 </div>
 
-<!-- 左側半屏目錄抽屜 -->
-<div class="toc-modal" id="tocModal">
-    <div class="toc-content">
-        <div class="toc-list" id="tocList">
-            <!-- 動態載入目錄 -->
+<div class="toast-notice" id="toastNotice"></div>
+
+<!-- 左側半屏：目錄抽屜 -->
+<div class="drawer-modal" id="tocModal">
+    <div class="drawer-content">
+        <div class="drawer-header">
+            <span>章節</span>
+            <button class="drawer-close" id="tocClose">&times;</button>
         </div>
+        <div class="drawer-list" id="tocList"></div>
+    </div>
+</div>
+
+<!-- 左側半屏：書架抽屜 -->
+<div class="drawer-modal" id="shelfModal">
+    <div class="drawer-content">
+        <div class="drawer-header">
+            <span>書架</span>
+            <button class="drawer-close" id="shelfClose">&times;</button>
+        </div>
+        <div class="drawer-list" id="shelfList"></div>
+    </div>
+</div>
+
+<!-- 左側半屏：搜尋結果抽屜 -->
+<div class="drawer-modal" id="searchModal">
+    <div class="drawer-content">
+        <div class="drawer-header">
+            <span>搜尋結果</span>
+            <button class="drawer-close" id="searchClose">&times;</button>
+        </div>
+        <div class="drawer-list" id="searchList"></div>
     </div>
 </div>
 
 <script>
-// 初始化設定與讀取儲存偏好
+// IndexedDB 資料庫初始化
+const DB_NAME = 'SimpleReaderDB';
+const STORE_NAME = 'books';
+let db = null;
+
+function initDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+            db = request.result;
+            resolve(db);
+        };
+        request.onupgradeneeded = (e) => {
+            const database = e.target.result;
+            if (!database.objectStoreNames.contains(STORE_NAME)) {
+                database.createObjectStore(STORE_NAME, { keyPath: 'key' });
+            }
+        };
+    });
+}
+
+function saveBookToDB(key, name, content) {
+    if (!db) return;
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    store.put({ key, name, content, updatedAt: Date.now() });
+}
+
+function getBookFromDB(key) {
+    return new Promise((resolve) => {
+        if (!db) return resolve(null);
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result ? req.result.content : null);
+        req.onerror = () => resolve(null);
+    });
+}
+
+function getAllBooksFromDB() {
+    return new Promise((resolve) => {
+        if (!db) return resolve([]);
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => resolve([]);
+    });
+}
+
+function deleteBookFromDB(key) {
+    return new Promise((resolve) => {
+        if (!db) return resolve();
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.delete(key);
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+    });
+}
+
+// 初始化設定
 let currentFontSize = parseFloat(localStorage.getItem('reader_font_size')) || 26;
 let currentLineHeight = parseFloat(localStorage.getItem('reader_line_height')) || 1.4;
 
@@ -274,13 +445,11 @@ document.documentElement.style.setProperty('--line-height', currentLineHeight);
 const converter = window.OpenCC ? window.OpenCC.Converter({ from: 'cn', to: 'hk' }) : text => text;
 
 function formatQuotes(text) {
-return text
-.replace(/“/g, '「')
-.replace(/”/g, '」')
-.replace(/‘/g, '『')
-.replace(/’/g, '』')
-.replace(/"([^"]+)"/g, '「$1」')
-.replace(/'([^']+)'/g, '『$1』');
+    return text
+        .replace(/“/g, '「').replace(/”/g, '」')
+        .replace(/‘/g, '『').replace(/’/g, '』')
+        .replace(/"([^"]+)"/g, '「$1」')
+        .replace(/'([^']+)'/g, '『$1』');
 }
 
 const toolbar = document.getElementById('toolbar');
@@ -289,273 +458,412 @@ const fileInput = document.getElementById('fileInput');
 const progressBtn = document.getElementById('progressBtn');
 const progressSlider = document.getElementById('progressSlider');
 const statusText = document.getElementById('statusText');
+const toastNotice = document.getElementById('toastNotice');
+
+const shelfBtn = document.getElementById('shelfBtn');
 const tocBtn = document.getElementById('tocBtn');
+const searchBtn = document.getElementById('searchBtn');
+
+const shelfModal = document.getElementById('shelfModal');
+const shelfClose = document.getElementById('shelfClose');
+const shelfList = document.getElementById('shelfList');
+
 const tocModal = document.getElementById('tocModal');
+const tocClose = document.getElementById('tocClose');
 const tocList = document.getElementById('tocList');
 
-const fontIncBtn = document.getElementById('fontIncBtn');
-const fontDecBtn = document.getElementById('fontDecBtn');
-const lineIncBtn = document.getElementById('lineIncBtn');
-const lineDecBtn = document.getElementById('lineDecBtn');
-const searchBtn = document.getElementById('searchBtn');
+const searchModal = document.getElementById('searchModal');
+const searchClose = document.getElementById('searchClose');
+const searchList = document.getElementById('searchList');
 
 let isUserDraggingSlider = false;
 let currentFileKey = null; 
 let chapterList = []; 
+let toastTimer = null;
 
-// 1. 點擊空白處隱藏/顯示選單
+function showToast(msg) {
+    toastNotice.textContent = msg;
+    toastNotice.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+        toastNotice.classList.remove('show');
+    }, 1500);
+}
+
+// 點擊空白處隱藏選單
 document.addEventListener('click', (e) => {
-if (toolbar.contains(e.target) || tocModal.contains(e.target)) return;
-toolbar.classList.toggle('hidden');
+    if (toolbar.contains(e.target) || shelfModal.contains(e.target) || tocModal.contains(e.target) || searchModal.contains(e.target)) return;
+    toolbar.classList.toggle('hidden');
 });
 
-// 2. 儲存與讀取閱讀進度
+// 進度儲存與恢復
 function saveProgress(scrollTop) {
-if (!currentFileKey) return;
-try {
-localStorage.setItem(`reader_pos_${currentFileKey}`, scrollTop);
-} catch (e) {
-console.error('儲存進度失敗:', e);
-}
+    if (!currentFileKey) return;
+    try {
+        localStorage.setItem(`reader_pos_${currentFileKey}`, scrollTop);
+    } catch (e) {}
 }
 
 function getSavedProgress() {
-if (!currentFileKey) return 0;
-return parseFloat(localStorage.getItem(`reader_pos_${currentFileKey}`)) || 0;
+    if (!currentFileKey) return 0;
+    return parseFloat(localStorage.getItem(`reader_pos_${currentFileKey}`)) || 0;
 }
 
-// 3. 滾動進度更新
 function updateProgressUI() {
-const scrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
-if (currentFileKey) saveProgress(scrollTop);
-if (isUserDraggingSlider) return;
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
+    if (currentFileKey) saveProgress(scrollTop);
+    if (isUserDraggingSlider) return;
 
-const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-if (scrollHeight <= 0) {
-progressBtn.textContent = '0.00%';
-progressSlider.value = 0;
-return;
-}
+    const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+    if (scrollHeight <= 0) {
+        progressBtn.textContent = '0.00%';
+        progressSlider.value = 0;
+        return;
+    }
 
-const percent = Math.min(100, Math.max(0, (scrollTop / scrollHeight) * 100));
-progressBtn.textContent = `${percent.toFixed(2)}%`;
-progressSlider.value = percent;
+    const percent = Math.min(100, Math.max(0, (scrollTop / scrollHeight) * 100));
+    progressBtn.textContent = `${percent.toFixed(2)}%`;
+    progressSlider.value = percent;
 }
 
 let scrollTimer;
 window.addEventListener('scroll', () => {
-if (scrollTimer) cancelAnimationFrame(scrollTimer);
-scrollTimer = requestAnimationFrame(updateProgressUI);
+    if (scrollTimer) cancelAnimationFrame(scrollTimer);
+    scrollTimer = requestAnimationFrame(updateProgressUI);
 }, { passive: true });
 
-// 4. 滑桿拖動
 progressSlider.addEventListener('mousedown', () => isUserDraggingSlider = true);
 progressSlider.addEventListener('touchstart', () => isUserDraggingSlider = true, { passive: true });
 
 progressSlider.addEventListener('input', (e) => {
-const targetPercent = parseFloat(e.target.value);
-progressBtn.textContent = `${targetPercent.toFixed(2)}%`;
-const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-window.scrollTo(0, (targetPercent / 100) * scrollHeight);
+    const targetPercent = parseFloat(e.target.value);
+    progressBtn.textContent = `${targetPercent.toFixed(2)}%`;
+    const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+    window.scrollTo(0, (targetPercent / 100) * scrollHeight);
 });
 
 progressSlider.addEventListener('mouseup', () => isUserDraggingSlider = false);
 progressSlider.addEventListener('touchend', () => isUserDraggingSlider = false);
 
-// 5. 百分比跳轉
 progressBtn.addEventListener('click', (e) => {
-e.stopPropagation();
-const currentVal = parseFloat(progressBtn.textContent) || 0;
-const input = prompt('請輸入跳轉進度 (0 - 100):', currentVal.toFixed(2));
-if (input !== null) {
-const targetPercent = parseFloat(input);
-if (!isNaN(targetPercent)) {
-const clamped = Math.min(100, Math.max(0, targetPercent));
-const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-window.scrollTo(0, (clamped / 100) * scrollHeight);
-updateProgressUI();
+    e.stopPropagation();
+    const currentVal = parseFloat(progressBtn.textContent) || 0;
+    const input = prompt('請輸入跳轉進度 (0 - 100):', currentVal.toFixed(2));
+    if (input !== null) {
+        const targetPercent = parseFloat(input);
+        if (!isNaN(targetPercent)) {
+            const clamped = Math.min(100, Math.max(0, targetPercent));
+            const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+            window.scrollTo(0, (clamped / 100) * scrollHeight);
+            updateProgressUI();
+        }
+    }
+});
+
+// 字體與行距調整（附帶進度錨點鎖定與 Toast 通知）
+function adjustStyles(type, delta) {
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
+    const scrollHeightBefore = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+    const ratio = scrollHeightBefore > 0 ? scrollTop / scrollHeightBefore : 0;
+
+    if (type === 'font') {
+        currentFontSize = Math.max(14, Math.min(50, currentFontSize + delta));
+        document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
+        localStorage.setItem('reader_font_size', currentFontSize);
+        showToast(`字體大小: ${currentFontSize}px`);
+    } else if (type === 'line') {
+        currentLineHeight = Math.max(1.0, Math.min(2.5, parseFloat((currentLineHeight + delta).toFixed(1))));
+        document.documentElement.style.setProperty('--line-height', currentLineHeight);
+        localStorage.setItem('reader_line_height', currentLineHeight);
+        showToast(`行距大小: ${currentLineHeight}`);
+    }
+
+    requestAnimationFrame(() => {
+        const scrollHeightAfter = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+        window.scrollTo(0, ratio * scrollHeightAfter);
+        updateProgressUI();
+    });
 }
+
+document.getElementById('fontIncBtn').addEventListener('click', (e) => { e.stopPropagation(); adjustStyles('font', 2); });
+document.getElementById('fontDecBtn').addEventListener('click', (e) => { e.stopPropagation(); adjustStyles('font', -2); });
+document.getElementById('lineIncBtn').addEventListener('click', (e) => { e.stopPropagation(); adjustStyles('line', 0.1); });
+document.getElementById('lineDecBtn').addEventListener('click', (e) => { e.stopPropagation(); adjustStyles('line', -0.1); });
+
+// 側邊欄抽屜開關通用控制
+function setupDrawer(modalId, btnId, closeId) {
+    const modal = document.getElementById(modalId);
+    document.getElementById(btnId).addEventListener('click', (e) => {
+        e.stopPropagation();
+        modal.classList.add('active');
+        if (modalId === 'shelfModal') renderShelf();
+    });
+    document.getElementById(closeId).addEventListener('click', () => modal.classList.remove('active'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
 }
-});
 
-// 字體與行距調整按鈕
-fontIncBtn.addEventListener('click', (e) => {
-e.stopPropagation();
-currentFontSize = Math.min(50, currentFontSize + 2);
-document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
-localStorage.setItem('reader_font_size', currentFontSize);
-updateProgressUI();
-});
+setupDrawer('tocModal', 'tocBtn', 'tocClose');
+setupDrawer('shelfModal', 'shelfBtn', 'shelfClose');
+setupDrawer('searchModal', 'searchBtn', 'searchClose');
 
-fontDecBtn.addEventListener('click', (e) => {
-e.stopPropagation();
-currentFontSize = Math.max(14, currentFontSize - 2);
-document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
-localStorage.setItem('reader_font_size', currentFontSize);
-updateProgressUI();
-});
-
-lineIncBtn.addEventListener('click', (e) => {
-e.stopPropagation();
-currentLineHeight = Math.min(2.5, parseFloat((currentLineHeight + 0.1).toFixed(1)));
-document.documentElement.style.setProperty('--line-height', currentLineHeight);
-localStorage.setItem('reader_line_height', currentLineHeight);
-updateProgressUI();
-});
-
-lineDecBtn.addEventListener('click', (e) => {
-e.stopPropagation();
-currentLineHeight = Math.max(1.0, parseFloat((currentLineHeight - 0.1).toFixed(1)));
-document.documentElement.style.setProperty('--line-height', currentLineHeight);
-localStorage.setItem('reader_line_height', currentLineHeight);
-updateProgressUI();
-});
-
-// 簡單文字搜尋功能
-searchBtn.addEventListener('click', (e) => {
-e.stopPropagation();
-const keyword = prompt('請輸入要搜尋的關鍵字：');
-if (!keyword) return;
-const fullText = textContent.textContent;
-const index = fullText.indexOf(keyword);
-if (index === -1) {
-alert('找不到該關鍵字');
-return;
-}
-const totalLen = fullText.length || 1;
-const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-const ratio = Math.min(1, Math.max(0, index / totalLen));
-window.scrollTo(0, ratio * scrollHeight);
-updateProgressUI();
-});
-
-// 目錄開關控制
-tocBtn.addEventListener('click', (e) => {
-e.stopPropagation();
-tocModal.classList.add('active');
-});
-
-tocModal.addEventListener('click', (e) => {
-if (e.target === tocModal) {
-tocModal.classList.remove('active');
-}
-});
-
-// 強效章節偵測（支援 第X章、第X節、第一百五十六節 等中文數字與阿拉伯數字）
+// 章節偵測（強效支援中文數字如「第一百五十六節」）
 function parseChapters(fullText) {
-const lines = fullText.split(/\r?\n/);
-const chapters = [];
-let charCount = 0;
+    const lines = fullText.split(/\r?\n/);
+    const chapters = [];
+    let charCount = 0;
+    const chapterRegex = /^\s*(?:第[0-9零一二三四五六七八九十百千萬億]+[章節回幕卷]|chapter\s*\d+|[0-9一二三四五六七八九十百]+[、\.])/i;
 
-// 支援「第 + 數字（阿拉伯或中文大寫） + 章/節/回/幕/卷」或常見標題
-const chapterRegex = /^\s*(?:第[0-9零一二三四五六七八九十百千萬億]+[章節回幕卷]|chapter\s*\d+|[0-9一二三四五六七八九十百]+[、\.])/i;
-
-for (let i = 0; i < lines.length; i++) {
-const line = lines[i].trim();
-if (line.length > 0 && line.length < 40 && chapterRegex.test(line)) {
-chapters.push({
-title: line,
-charIndex: charCount
-});
-}
-charCount += lines[i].length + 1;
-}
-return chapters;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.length > 0 && line.length < 50 && chapterRegex.test(line)) {
+            chapters.push({ title: line, charIndex: charCount });
+        }
+        charCount += lines[i].length + 1;
+    }
+    return chapters;
 }
 
 function renderToc() {
-tocList.innerHTML = '';
-if (chapterList.length === 0) {
-tocList.innerHTML = '<div class="toc-empty">未偵測到明確的章節目錄</div>';
-return;
+    tocList.innerHTML = '';
+    if (chapterList.length === 0) {
+        tocList.innerHTML = '<div class="drawer-empty">未偵測到明確的章節目錄</div>';
+        return;
+    }
+    const totalLen = textContent.textContent.length || 1;
+    chapterList.forEach((ch) => {
+        const item = document.createElement('div');
+        item.className = 'drawer-item';
+        item.textContent = ch.title;
+        item.addEventListener('click', () => {
+            tocModal.classList.remove('active');
+            const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+            const ratio = Math.min(1, Math.max(0, ch.charIndex / totalLen));
+            window.scrollTo(0, ratio * scrollHeight);
+            updateProgressUI();
+        });
+        tocList.appendChild(item);
+    });
 }
 
-const totalLen = textContent.textContent.length || 1;
+// 渲染書架清單
+async function renderShelf() {
+    shelfList.innerHTML = '';
+    const books = await getAllBooksFromDB();
+    if (books.length === 0) {
+        shelfList.innerHTML = '<div class="drawer-empty">書架目前沒有儲存的書籍</div>';
+        return;
+    }
 
-chapterList.forEach((ch) => {
-const item = document.createElement('div');
-item.className = 'toc-item';
-item.textContent = ch.title;
-item.addEventListener('click', () => {
-tocModal.classList.remove('active');
-const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-const ratio = Math.min(1, Math.max(0, ch.charIndex / totalLen));
-window.scrollTo(0, ratio * scrollHeight);
-updateProgressUI();
-});
-tocList.appendChild(item);
-});
+    books.sort((a, b) => b.updatedAt - a.updatedAt);
+    books.forEach((book) => {
+        const item = document.createElement('div');
+        item.className = 'drawer-item';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = book.name;
+        titleSpan.style.overflow = 'hidden';
+        titleSpan.style.textOverflow = 'ellipsis';
+        titleSpan.style.flex = '1';
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'delete-btn';
+        delBtn.textContent = '刪除';
+        delBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (confirm(`確定要從書架刪除《${book.name}》嗎？`)) {
+                await deleteBookFromDB(book.key);
+                renderShelf();
+            }
+        });
+
+        item.appendChild(titleSpan);
+        item.appendChild(delBtn);
+
+        item.addEventListener('click', async () => {
+            shelfModal.classList.remove('active');
+            currentFileKey = book.key;
+            statusText.textContent = '載入中...';
+            textContent.textContent = book.content;
+
+            chapterList = parseChapters(book.content);
+            if (chapterList.length > 0) {
+                tocBtn.style.display = 'block';
+                renderToc();
+            } else {
+                tocBtn.style.display = 'none';
+            }
+
+            const savedY = getSavedProgress();
+            window.scrollTo(0, savedY);
+            updateProgressUI();
+            statusText.textContent = '';
+            showToast(`已載入《${book.name}》`);
+        });
+
+        shelfList.appendChild(item);
+    });
 }
 
-// 檔案載入與轉碼
+// 精準搜尋與結果預覽列表
+searchBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const keyword = prompt('請輸入要搜尋的關鍵字：');
+    if (!keyword) return;
+
+    const fullText = textContent.textContent;
+    if (!fullText || fullText.startsWith('請點擊')) {
+        alert('請先載入文章內容再進行搜尋');
+        return;
+    }
+
+    searchList.innerHTML = '';
+    let matchCount = 0;
+    let pos = 0;
+    const totalLen = fullText.length || 1;
+    const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+
+    while ((pos = fullText.indexOf(keyword, pos)) !== -1) {
+        matchCount++;
+        const start = Math.max(0, pos - 15);
+        const end = Math.min(fullText.length, pos + keyword.length + 15);
+        const snippet = fullText.substring(start, end).replace(/\n/g, ' ');
+        const percent = ((pos / totalLen) * 100).toFixed(2);
+
+        const item = document.createElement('div');
+        item.className = 'drawer-item search-result-item';
+
+        const topRow = document.createElement('div');
+        topRow.style.display = 'flex';
+        topRow.style.justifyContent = 'space-between';
+        topRow.innerHTML = `<span style="color:#4CAF50; font-weight:bold;">匹配項 #${matchCount}</span><span class="item-subtext">${percent}%</span>`;
+
+        const snippetDiv = document.createElement('div');
+        snippetDiv.className = 'search-snippet';
+        snippetDiv.innerHTML = `...${snippet.replace(keyword, `<span>${keyword}</span>`)}...`;
+
+        item.appendChild(topRow);
+        item.appendChild(snippetDiv);
+
+        const targetIndex = pos;
+        item.addEventListener('click', () => {
+            searchModal.classList.remove('active');
+            const ratio = Math.min(1, Math.max(0, targetIndex / totalLen));
+            window.scrollTo(0, ratio * scrollHeight);
+            updateProgressUI();
+            showToast(`已跳轉至 ${percent}%`);
+        });
+
+        searchList.appendChild(item);
+        pos += keyword.length;
+        if (matchCount >= 100) break; // 避免過多卡頓
+    }
+
+    if (matchCount === 0) {
+        alert('找不到符合的關鍵字');
+        return;
+    }
+
+    searchModal.classList.add('active');
+});
+
+// 檔案載入與轉碼儲存
 fileInput.addEventListener('change', async (e) => {
-const file = e.target.files[0];
-if (!file) return;
+    const file = e.target.files[0];
+    if (!file) return;
 
-currentFileKey = `${file.name}_${file.size}`;
-statusText.textContent = '載入中...';
-textContent.innerHTML = '';
-tocBtn.style.display = 'none';
+    currentFileKey = `${file.name}_${file.size}`;
+    statusText.textContent = '載入中...';
+    textContent.innerHTML = '';
+    tocBtn.style.display = 'none';
 
-try {
-const arrayBuffer = await file.arrayBuffer();
-const uint8Array = new Uint8Array(arrayBuffer);
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
 
-let encoding = 'utf-8';
-try {
-const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
-utf8Decoder.decode(uint8Array.subarray(0, 5000));
-} catch (err) {
-encoding = 'gb18030';
-}
+        let encoding = 'utf-8';
+        try {
+            const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+            utf8Decoder.decode(uint8Array.subarray(0, 5000));
+        } catch (err) {
+            encoding = 'gb18030';
+        }
 
-const decoder = new TextDecoder(encoding);
-const chunkSize = 100000;
-let offset = 0;
-const fragment = document.createDocumentFragment();
-let fullRawText = '';
+        const decoder = new TextDecoder(encoding);
+        const chunkSize = 100000;
+        let offset = 0;
+        let fullRawText = '';
 
-while (offset < uint8Array.length) {
-const chunk = uint8Array.subarray(offset, offset + chunkSize);
-const isFinal = offset + chunkSize >= uint8Array.length;
-const textChunk = decoder.decode(chunk, { stream: !isFinal });
+        while (offset < uint8Array.length) {
+            const chunk = uint8Array.subarray(offset, offset + chunkSize);
+            const isFinal = offset + chunkSize >= uint8Array.length;
+            const textChunk = decoder.decode(chunk, { stream: !isFinal });
 
-fullRawText += textChunk;
-const convertedChunk = formatQuotes(converter(textChunk));
-fragment.appendChild(document.createTextNode(convertedChunk));
+            fullRawText += textChunk;
+            offset += chunkSize;
+            statusText.textContent = `${Math.min(100, Math.round((offset / uint8Array.length) * 100))}%`;
+            await new Promise(r => setTimeout(r, 0));
+        }
 
-offset += chunkSize;
-statusText.textContent = `${Math.min(100, Math.round((offset / uint8Array.length) * 100))}%`;
-await new Promise(r => setTimeout(r, 0));
-}
+        const convertedFullText = formatQuotes(converter(fullRawText));
+        textContent.textContent = convertedFullText;
+        toolbar.classList.remove('hidden');
 
-textContent.appendChild(fragment);
-toolbar.classList.remove('hidden');
+        // 儲存至 IndexedDB 書架
+        saveBookToDB(currentFileKey, file.name, convertedFullText);
 
-chapterList = parseChapters(fullRawText);
-if (chapterList.length > 0) {
-tocBtn.style.display = 'block';
-renderToc();
-}
+        chapterList = parseChapters(convertedFullText);
+        if (chapterList.length > 0) {
+            tocBtn.style.display = 'block';
+            renderToc();
+        }
 
-const savedY = getSavedProgress();
-if (savedY > 0) {
-statusText.textContent = '已恢復閱讀進度';
-setTimeout(() => { statusText.textContent = ''; }, 2000);
-requestAnimationFrame(() => {
-window.scrollTo(0, savedY);
-updateProgressUI();
+        const savedY = getSavedProgress();
+        if (savedY > 0) {
+            statusText.textContent = '已恢復進度';
+            setTimeout(() => { statusText.textContent = ''; }, 2000);
+            window.scrollTo(0, savedY);
+            updateProgressUI();
+        } else {
+            statusText.textContent = '';
+            window.scrollTo(0, 0);
+            updateProgressUI();
+        }
+        showToast(`成功載入《${file.name}》`);
+
+    } catch (err) {
+        console.error(err);
+        statusText.textContent = '載入失敗';
+    }
 });
-} else {
-statusText.textContent = '';
-window.scrollTo(0, 0);
-updateProgressUI();
-}
 
-} catch (err) {
-console.error(err);
-statusText.textContent = '載入失敗';
-}
+// 網頁啟動時初始化資料庫，並自動嘗試讀取上次最後看的書
+window.addEventListener('DOMContentLoaded', async () => {
+    try {
+        await initDB();
+        const books = await getAllBooksFromDB();
+        if (books.length > 0) {
+            books.sort((a, b) => b.updatedAt - a.updatedAt);
+            const lastBook = books[0];
+            currentFileKey = lastBook.key;
+            textContent.textContent = lastBook.content;
+            toolbar.classList.remove('hidden');
+
+            chapterList = parseChapters(lastBook.content);
+            if (chapterList.length > 0) {
+                tocBtn.style.display = 'block';
+                renderToc();
+            }
+
+            const savedY = getSavedProgress();
+            if (savedY > 0) {
+                window.scrollTo(0, savedY);
+            }
+            updateProgressUI();
+            showToast(`自動載入最近書籍: ${lastBook.name}`);
+        }
+    } catch (e) {
+        console.error('初始化書架失敗', e);
+    }
 });
 </script>
 
