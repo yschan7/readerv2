@@ -52,7 +52,7 @@ top: 0;
 left: 0;
 right: 0;
 z-index: 100;
-background-color: var(--panel-bg);
+background-color: #000000;
 border-bottom: 1px solid var(--border-color);
 display: flex;
 flex-direction: column;
@@ -67,16 +67,10 @@ transform: translateY(-100%);
 
 .toolbar-row {
 display: flex;
-flex-wrap: nowrap;
+flex-wrap: wrap;
 gap: 6px;
 align-items: center;
-overflow-x: auto;
-white-space: nowrap;
 width: 100%;
-}
-
-.toolbar-row::-webkit-scrollbar {
-display: none;
 }
 
 .btn {
@@ -197,7 +191,7 @@ visibility: visible;
 }
 
 .drawer-content {
-background-color: #111;
+background-color: #000000;
 width: 50%;
 height: 100%;
 border-right: 1px solid #333;
@@ -221,7 +215,7 @@ align-items: center;
 font-weight: bold;
 font-size: 15px;
 color: #fff;
-background-color: #151515;
+background-color: #000000;
 }
 
 .drawer-close {
@@ -358,8 +352,10 @@ function initDB() {
 
 function saveBookToDB(key, name, content) {
     if (!db) return;
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).put({ key, name, content, updatedAt: Date.now() });
+    try {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).put({ key, name, content, updatedAt: Date.now() });
+    } catch(e) {}
 }
 
 function getAllBooksFromDB() {
@@ -419,7 +415,7 @@ const tocList = document.getElementById('tocList');
 
 let isUserDraggingSlider = false;
 let currentFileKey = null; 
-let chapterList = []; 
+let chapterElements = []; 
 let toastTimer = null;
 
 function showToast(msg) {
@@ -499,7 +495,6 @@ progressBtn.addEventListener('click', (e) => {
 function adjustStyles(type, delta) {
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
     
-    // 找出目前畫面上方的文字節點作為精準錨點
     let anchorNode = null;
     let anchorOffset = 0;
     const range = document.caretRangeFromPoint ? document.caretRangeFromPoint(10, 100) : null;
@@ -528,9 +523,7 @@ function adjustStyles(type, delta) {
                 rectRange.setEnd(anchorNode, Math.min(anchorOffset, anchorNode.length));
                 const rect = rectRange.getBoundingClientRect();
                 window.scrollBy(0, rect.top - 100);
-            } catch (e) {
-                // 回退機制
-            }
+            } catch (e) {}
         }
         updateProgressUI();
     });
@@ -555,9 +548,7 @@ function setupDrawer(modalId, btnId, closeId) {
 setupDrawer('tocModal', 'tocBtn', 'tocClose');
 setupDrawer('shelfModal', 'shelfBtn', 'shelfClose');
 
-// 章節解析與 DOM 元素標記
-let chapterElements = [];
-
+// 優化大文本解析與記憶體流暢度（支援數百萬字 Safari）
 function parseAndRenderChapters(fullText) {
     const lines = fullText.split(/\r?\n/);
     chapterElements = [];
@@ -569,27 +560,40 @@ function parseAndRenderChapters(fullText) {
     let charCount = 0;
     const totalLen = fullText.length || 1;
 
-    lines.forEach((line, index) => {
-        const p = document.createElement('div');
-        p.textContent = line + (index < lines.length - 1 ? '\n' : '');
-        
-        const trimmed = line.trim();
-        if (trimmed.length > 0 && trimmed.length < 50 && chapterRegex.test(trimmed)) {
-            p.classList.add('chapter-title-node');
-            const percent = ((charCount / totalLen) * 100).toFixed(2);
-            chapterElements.push({
-                title: trimmed,
-                element: p,
-                percent: percent
-            });
-        }
-        
-        fragment.appendChild(p);
-        charCount += line.length + 1;
-    });
+    // 分批插入 DOM 避免 Safari 卡死/崩潰
+    const batchSize = 2000;
+    let index = 0;
 
-    textContent.appendChild(fragment);
-    renderToc();
+    function processBatch() {
+        const limit = Math.min(index + batchSize, lines.length);
+        for (let i = index; i < limit; i++) {
+            const line = lines[i];
+            const p = document.createElement('div');
+            p.textContent = line + (i < lines.length - 1 ? '\n' : '');
+            
+            const trimmed = line.trim();
+            if (trimmed.length > 0 && trimmed.length < 50 && chapterRegex.test(trimmed)) {
+                p.classList.add('chapter-title-node');
+                const percent = ((charCount / totalLen) * 100).toFixed(2);
+                chapterElements.push({
+                    title: trimmed,
+                    element: p,
+                    percent: percent
+                });
+            }
+            fragment.appendChild(p);
+            charCount += line.length + 1;
+        }
+        textContent.appendChild(fragment);
+        index = limit;
+
+        if (index < lines.length) {
+            requestAnimationFrame(processBatch);
+        } else {
+            renderToc();
+        }
+    }
+    processBatch();
 }
 
 function renderToc() {
@@ -601,6 +605,7 @@ function renderToc() {
     }
     
     tocBtn.style.display = 'block';
+    const fragment = document.createDocumentFragment();
     chapterElements.forEach((ch) => {
         const item = document.createElement('div');
         item.className = 'drawer-item';
@@ -620,13 +625,13 @@ function renderToc() {
 
         item.addEventListener('click', () => {
             tocModal.classList.remove('active');
-            // 精準定位至該 DOM 元素位置
             const elementTop = ch.element.offsetTop;
             window.scrollTo(0, elementTop - 80);
             updateProgressUI();
         });
-        tocList.appendChild(item);
+        fragment.appendChild(item);
     });
+    tocList.appendChild(fragment);
 }
 
 async function renderShelf() {
@@ -701,7 +706,7 @@ fileInput.addEventListener('change', async (e) => {
         }
 
         const decoder = new TextDecoder(encoding);
-        const chunkSize = 100000;
+        const chunkSize = 250000;
         let offset = 0;
         let fullRawText = '';
 
